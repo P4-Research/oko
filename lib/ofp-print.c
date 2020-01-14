@@ -26,6 +26,7 @@
 #include <stdarg.h>
 #include <stdlib.h>
 #include <ctype.h>
+#include <time.h>
 
 #include "bundle.h"
 #include "byte-order.h"
@@ -1043,6 +1044,27 @@ ofp_print_bpf_dump_map_reply(struct ds *string, const struct ofp_header *oh, boo
     }
 }
 
+static void
+ofp_print_bpf_show_prog_reply(struct ds *string, const struct ofp_header *oh)
+{
+    struct ofpbuf b = ofpbuf_const_initializer(oh, ntohs(oh->length));
+    enum ofpraw raw = ofpraw_pull_assert(&b);
+    if (raw != OFPRAW_NXT_BPF_SHOW_PROG_REPLY) {
+        ds_put_cstr(string, "Wrong message reply!");
+        return;
+    }
+
+    struct ol_bpf_show_prog_reply *buf = ofpbuf_pull(&b, sizeof(struct ol_bpf_show_prog_reply));
+    ovs_be16 nb_progs = ntohs(buf->nb_progs);
+    ds_put_format(string, "\nThe number of BPF programs already loaded: %d\n", nb_progs);
+    for (int i = 0; i < nb_progs; i++) {
+        struct ol_bpf_show_prog_info *info = ofpbuf_pull(&b, sizeof(struct ol_bpf_show_prog_info));
+        ds_put_format(string, "prog %d: nb_maps=%d", ntohs(info->prog_id), ntohs(info->nb_maps));
+        ds_put_strftime_msec(string, " loaded_at=%Y-%m-%d T%H:%M:%S \n",
+                             (long long int) ntohll(info->loaded_at), false);
+    }
+}
+
 static enum ofperr
 ofp_to_string__(const struct ofp_header *oh,
                 const struct ofputil_port_map *port_map,
@@ -1282,7 +1304,11 @@ ofp_to_string__(const struct ofp_header *oh,
     case OFPTYPE_BPF_DUMP_MAP_REPLY:
         ofp_print_bpf_dump_map_reply(string, oh, verbosity);
         break;
+
+    case OFPTYPE_BPF_SHOW_PROG_REPLY:
+        ofp_print_bpf_show_prog_reply(string, oh);
     }
+
 
     return 0;
 }
